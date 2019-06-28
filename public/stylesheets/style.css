@@ -1,0 +1,16 @@
+body {
+  font-family: sans-serif;
+}
+
+.message {
+  max-width: 960px;
+  padding: 10px 20px;
+  margin: 20px 20px 1.5em 20px;
+  /*color: #3399cc;*/
+  background: #f2ec91; 
+}
+
+.message p {
+  font-size: 14px;
+  font-weight: bold; 
+}
