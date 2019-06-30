@@ -1,9 +1,39 @@
 <ul>
   <% @files.each do |file| %>
-    <li><a href="/<%= file %>"><%= file %></a> <a href="/<%= file %>/edit">edit</a></li>
+    <li class="filelist">
+      <a href="/<%= file %>/edit">edit</a>
+      <form class="inline" action="/<%= file %>/delete" method="post" onsubmit="return confirm('Delete the file? This cannot be undone!');">
+        <button type="submit">Delete</button>
+      </form>
+      <form class="inline" action="/<%= file %>/duplicate" method="post">
+        <button type="submit">Duplicate</button>
+      </form>
+
+      <a href="/<%= file %>"><%= file %></a>
+    </li>
   <% end %>
 </ul>
 
 <div>
   <a href="/new">New Document</a>
 </div>
+<br />
+
+<% if session[:username] %>
+
+<div>
+    <em>Signed in as <%= session[:username] %>. </em>
+    <form class="inline" action="users/signout"><button type="submit">Sign Out</button></form>
+</div>
+
+<% else %>
+
+<form class="inline" action="users/signin">
+  <button type="submit">Sign In</button>
+</form>
+
+<form class="inline" action="users/signup">
+  <button type="submit">Sign Up</button>
+</form>
+
+<% end %>

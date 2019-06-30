@@ -14,3 +14,13 @@ body {
   font-size: 14px;
   font-weight: bold; 
 }
+
+.inline {
+  display: inline;
+}
+
+.filelist {
+  padding: 0.5em;
+  border-bottom: 1px solid gray;
+  max-width: 400px;
+}

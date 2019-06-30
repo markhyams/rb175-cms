@@ -21,12 +21,14 @@ class CmsTest < Minitest::Test
     FileUtils.rm_rf(data_path)
   end
   
-  def create_document(name, content = "")
-    File.open(File.join(data_path, name), "w") do |file|
-      file.write(content)
-    end
+  def session
+    last_request.env["rack.session"]
   end
   
+  def admin_session
+    { "rack.session" => { username: "admin" } }
+  end
+
   def test_home
     create_document("about.md")
     create_document("changes.txt")
@@ -49,14 +51,14 @@ class CmsTest < Minitest::Test
   
   def test_non_existant_file
     get "/fake_file.text"
+    assert_equal "fake_file.text does not exist.", session[:message]
     
     assert_equal 302, last_response.status
     
     get last_response["Location"]
     
     assert_equal 200, last_response.status
-    assert_includes last_response.body, "fake_file.text does not exist."
-    
+
     get "/"
     refute_includes last_response.body, "fake_file.text does not exist."
   end
@@ -74,7 +76,7 @@ class CmsTest < Minitest::Test
   def test_editing_document
     create_document("history.txt")
     
-    get "/history.txt/edit"
+    get "/history.txt/edit", {}, admin_session
     
     assert_equal 200, last_response.status
     assert_includes last_response.body, "<textarea"
@@ -84,11 +86,12 @@ class CmsTest < Minitest::Test
   def test_updating_document
     create_document("changes.txt")
 
-    post "/changes.txt", file_content: "new content"
+    post "/changes.txt", {file_content: "new content"}, admin_session
+    
     assert_equal 302, last_response.status
+    assert_equal "changes.txt has been updated.", session[:message]
     
     get last_response.headers["Location"]
-    assert_includes last_response.body, "changes.txt has been updated."
 
     get "/changes.txt"
     assert_equal 200, last_response.status
@@ -96,12 +99,12 @@ class CmsTest < Minitest::Test
   end
   
   def test_create_document
-    post "/new", document_name: "newfile.txt"
+    post "/new", {document_name: "newfile.txt"}, admin_session
     assert_equal 302, last_response.status
+    assert_equal "newfile.txt was created.", session[:message]
     
     get last_response.headers["Location"]
-    assert_includes last_response.body, "newfile.txt was created."
-    
+
     get "/newfile.txt"
     assert_equal 200, last_response.status
     
@@ -110,7 +113,7 @@ class CmsTest < Minitest::Test
   end
   
   def test_view_new_doc_form
-    get "/new"
+    get "/new", {}, admin_session
     
     assert_equal 200, last_response.status
     assert_includes last_response.body, "<input"
@@ -118,16 +121,103 @@ class CmsTest < Minitest::Test
   end
   
   def test_create_new_doc_no_filename
-    post "/new", document_name: ""
+    post "/new", {document_name: ""}, admin_session
     
     assert_equal 422, last_response.status
     assert_includes last_response.body, "A name is required."
   end
   
   def test_no_file_extension
-    post "/new", document_name: "test"
+    post "/new", {document_name: "test"}, admin_session
     
     assert_equal 422, last_response.status
     assert_includes last_response.body, ".txt or .md extension"
+  end
+  
+  def test_delete_file
+    create_document("test_delete.txt")
+    
+    get "/", {}, admin_session
+    assert_includes last_response.body, "test_delete.txt"
+    
+    post "/test_delete.txt/delete"
+    assert_equal "test_delete.txt has been deleted.", session[:message]
+    assert_equal 302, last_response.status
+    
+    get last_response.headers["Location"]
+    assert_equal 200, last_response.status
+
+    get "/"
+    refute_includes last_response.body, "test_delete.txt"
+  end
+  
+  def test_signin
+    get "/"
+    assert_includes last_response.body, "Sign In"
+    
+    post "/users/signin", { username: "admin", password: "secret" }
+    assert_equal "Welcome!", session[:message]
+    assert_equal 302, last_response.status
+    
+    get last_response.headers["Location"]
+    assert_includes last_response.body, "Signed in as admin."
+    
+    get "/users/signout"
+    assert_equal "You have been signed out.", session[:message]
+    get last_response.headers["Location"]
+  end
+  
+  def test_failed_signin
+    post "/users/signin", { username: "adm", password: "secret" }
+    assert_equal 422, last_response.status
+    assert_includes last_response.body, "Invalid"
+  end
+  
+  def test_signin_form
+    get "users/signin"
+    assert_equal 200, last_response.status
+    assert_includes last_response.body, "<input"
+    assert_includes last_response.body, %q(<button type="submit")
+  end
+  
+  def test_signed_in_user
+    get "/", {}, {"rack.session" => { :username => "admin" } }
+    
+    assert_includes last_response.body, "Signed in as admin."
+    
+    get "/users/signout"
+    assert_equal "You have been signed out.", session[:message]
+    assert_nil session[:username]
+  end
+  
+  def test_create_user
+    users_test = YAML.load_file(load_user_credentials)
+    
+    post "/users/signup", {username: "user", password1: "password", password2: "password"}
+    assert_equal "Account successfully created.", session[:message]
+    assert_equal 302, last_response.status
+    
+    post "/users/signin", {username: "user", password: "password"}
+    assert_equal "Welcome!", session[:message]
+    
+    File.open(load_user_credentials, "w") { |file| file.write(users_test.to_yaml)}
+  end
+  
+  def test_user_already_exists
+    post "/users/signup", {username: "admin", password1: "password", password2: "password"}
+    assert_equal 422, last_response.status
+    assert_includes last_response.body, "Username already exists."
+  end
+  
+  def test_passwords_dont_match
+    post "/users/signup", {username: "user", password1: "passwjord", password2: "password"}
+    assert_equal 422, last_response.status
+    assert_includes last_response.body, "Passwords do not match."
+  end
+  
+  def test_password_too_short
+    post "/users/signup", {username: "user", password1: "pass", password2: "pass"}
+    assert_equal 422, last_response.status
+    assert_includes last_response.body, "Password must be at least five characters."
   end
 end
