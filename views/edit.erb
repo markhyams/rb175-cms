@@ -5,3 +5,8 @@
   </div>
   <button type="submit">Save Changes</button>
 </form>
+<br />
+
+<% unless @history_files.empty? %>
+  <div><a href="history">View History</a></div>
+<% end %>

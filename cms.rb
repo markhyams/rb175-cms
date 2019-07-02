@@ -54,6 +54,32 @@ def create_document(name, content = "")
   end
 end
 
+def history_files(path, history_path = "history")
+  filename = File.basename(path, ".*")
+  extension = File.extname(path)
+  directory = File.dirname(path)
+ 
+  paths = Dir.glob(File.join(directory, history_path, "#{filename}_v*#{extension}"))
+  paths.map { |path| File.basename(path) }.sort
+end
+
+def next_version_file_path(path, history_path = "history")
+  filename = File.basename(path, ".*")
+  extension = File.extname(path)
+  directory = File.dirname(path)
+  
+  versions = Dir.glob(File.join(directory, history_path, "#{filename}_v*#{extension}"))
+  next_version_num = if versions.empty?
+                       "000"
+                     else
+                       latest_version = File.basename(versions.max, ".*")
+                       sprintf("%03d", latest_version[-3..-1].to_i + 1)
+                     end
+  name = File.join(history_path, filename + "_v" + next_version_num + extension)
+  File.join(directory, name)
+end 
+
+
 def valid_credentials?(username, password)
   users = YAML.load_file(load_user_credentials)
   return false unless users.key?(username)
@@ -171,6 +197,7 @@ get "/:filename/edit" do
   if File.file?(path)
     @file_name = params[:filename]
     @file_content = File.read(path)
+    @history_files = history_files(path)
   else
     session[:message] = "#{params[:filename]} does not exist."
     redirect "/"
@@ -222,17 +249,23 @@ post "/uploadimage" do
   end
 end
 
+# submit changes after editing file
 post "/:filename" do
   require_signed_in_user  
 
   path = File.join(data_path, File.basename(params[:filename]))
   edited_contents = params[:file_content]
+  original_contents = File.read(path)
 
   if !File.file?(path)
     session[:message] = "#{params[:filename]} does not exist."
     redirect "/"
-  elsif
+  elsif edited_contents == original_contents
+    session[:message] = "No edits were made."
+    redirect "/"
+  else
     File.write(path, edited_contents)
+    File.write(next_version_file_path(path), original_contents)
     session[:message] = "#{params[:filename]} has been updated."
     redirect "/"
   end
@@ -268,9 +301,41 @@ post "/:filename/delete" do
     session[:message] = "#{params[:filename]} does not exist."
     redirect "/"
   elsif
-    # @file_name = params[:filename]
     File.delete(path)
     session[:message] = "#{params[:filename]} has been deleted."
     redirect "/"
   end
+end
+
+get "/:filename/history" do
+  require_signed_in_user
+  
+  @file_name = File.basename(params[:filename])
+  path = File.join(data_path, @file_name)
+  @history_files = history_files(path)
+  
+  erb :history
+end
+
+get "/:filename/history/:history_file" do
+  require_signed_in_user
+  
+  @file_name = File.basename(params[:history_file])
+  path = File.join(data_path, "history", @file_name)
+  load_file_contents(path)
+end
+
+post "/:filename/history/:history_file/restore" do
+  require_signed_in_user  
+
+  original_path = File.join(data_path, File.basename(params[:filename]))
+  history_path = File.join(data_path, "history", File.basename(params[:history_file]))
+  original_contents = File.read(original_path)
+  history_contents = File.read(history_path)
+  
+  File.write(next_version_file_path(original_path), original_contents)
+  File.write(original_path, history_contents)
+  File.delete(history_path)
+  session[:message] = "#{params[:history_file]} has been restored to #{params[:filename]}."
+  redirect "/"
 end

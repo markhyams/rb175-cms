@@ -23,6 +23,7 @@ require 'bcrypt'
 
 path = "/usr/bin/ruby.rb"
 
+
 name = File.basename(path, ".*")
 ext = File.extname(path)
 

@@ -15,6 +15,7 @@ class CmsTest < Minitest::Test
   
   def setup
     FileUtils.mkdir_p(data_path)
+    FileUtils.mkdir_p(File.join(data_path, "history"))
   end
   
   def teardown
@@ -96,6 +97,36 @@ class CmsTest < Minitest::Test
     get "/changes.txt"
     assert_equal 200, last_response.status
     assert_includes last_response.body, "new content"
+  end
+  
+  def test_version_created_after_editing
+    create_document("changes.txt", "old content")
+
+    post "/changes.txt", {file_content: "new content"}, admin_session
+    history_version_path = File.join(data_path, "history", "changes_v000.txt")
+    assert File.file?(history_version_path)
+    assert_includes File.read(history_version_path), "old content"
+  end
+  
+  def test_restore_version
+    create_document("changes.txt", "old content")
+
+    post "/changes.txt", {file_content: "new content"}, admin_session
+    history_version_path = File.join(data_path, "history", "changes_v000.txt")
+    
+    post "/changes.txt/history/changes_v000.txt/restore"
+    assert_equal "changes_v000.txt has been restored to changes.txt.", session[:message]
+    assert !File.file?(history_version_path)
+    assert_includes File.read(File.join(data_path, "changes.txt")), "old content"
+  end
+  
+  def test_no_edits_made
+    create_document("changes.txt", "new content")
+
+    post "/changes.txt", {file_content: "new content"}, admin_session
+    
+    assert_equal 302, last_response.status
+    assert_equal "No edits were made.", session[:message]
   end
   
   def test_create_document
